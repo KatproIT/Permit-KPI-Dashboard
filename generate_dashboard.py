@@ -2,7 +2,7 @@ import requests
 import json
 import os
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 # ─── CONFIG ───────────────────────────────────────────────────────────────────
 TENANT_ID       = os.environ.get("TENANT_ID")
@@ -90,7 +90,10 @@ def build_dashboard(items):
     values         = list(counts.values())
     colors         = [get_meta(l)["color"] for l in labels]
     display_labels = [get_meta(l)["label"] for l in labels]
-    now            = datetime.utcnow().strftime("%b %d, %Y · %I:%M %p UTC")
+
+    # ── EST Timestamp ──
+    est = timezone(timedelta(hours=-5))
+    now = "Last Updated at " + datetime.now(est).strftime("%b %d, %Y · %I:%M %p EST")
 
     # ── KPI Cards HTML ──
     kpi_cards_html = f"""
@@ -122,7 +125,6 @@ def build_dashboard(items):
         </div>
       </div>"""
 
-    # ── Full HTML ──
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -146,8 +148,6 @@ body {{
     radial-gradient(ellipse 60% 40% at 80% 80%,rgba(34,197,94,0.05),transparent);
 }}
 .page {{ max-width:1200px; margin:0 auto; padding:36px 28px; }}
-
-/* Header */
 .header {{ display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:36px; padding-bottom:24px; border-bottom:1px solid var(--border); }}
 .header-title {{ font-size:1.75rem; font-weight:800; letter-spacing:-0.8px; background:linear-gradient(135deg,#f1f5f9 30%,#94a3b8); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }}
 .header-sub {{ display:flex; align-items:center; gap:8px; margin-top:6px; }}
@@ -157,8 +157,6 @@ body {{
 .header-right {{ display:flex; flex-direction:column; align-items:flex-end; gap:8px; }}
 .live-badge {{ background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.25); border-radius:999px; padding:5px 12px; font-size:0.72rem; color:#4ade80; font-family:'JetBrains Mono',monospace; }}
 .time-badge {{ font-size:0.72rem; color:var(--muted); font-family:'JetBrains Mono',monospace; }}
-
-/* KPI Grid */
 .kpi-grid {{ display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:14px; margin-bottom:24px; }}
 .kpi-card {{
   background:var(--card); border:1px solid var(--border); border-radius:18px;
@@ -181,11 +179,7 @@ body {{
 .kpi-lbl {{ font-size:0.72rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.8px; font-weight:600; margin-bottom:14px; }}
 .kpi-progress {{ height:3px; background:rgba(255,255,255,0.06); border-radius:99px; overflow:hidden; }}
 .kpi-fill {{ height:100%; border-radius:99px; }}
-
-/* Divider */
 .divider {{ height:1px; background:linear-gradient(90deg,transparent,var(--border2),transparent); margin:24px 0; }}
-
-/* Charts */
 .charts-row {{ display:grid; grid-template-columns:420px 1fr; gap:20px; }}
 @media(max-width:800px){{ .charts-row{{grid-template-columns:1fr;}} }}
 .chart-card {{
@@ -198,8 +192,6 @@ body {{
 .donut-center {{ position:absolute; text-align:center; pointer-events:none; }}
 .donut-center-num {{ font-size:2.2rem; font-weight:800; letter-spacing:-1px; color:var(--text); }}
 .donut-center-lbl {{ font-size:0.68rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.8px; margin-top:2px; }}
-
-/* Animations */
 @keyframes slideUp {{ from{{opacity:0;transform:translateY(20px);}} to{{opacity:1;transform:translateY(0);}} }}
 .kpi-card:nth-child(1){{animation-delay:0.05s;}} .kpi-card:nth-child(2){{animation-delay:0.10s;}}
 .kpi-card:nth-child(3){{animation-delay:0.15s;}} .kpi-card:nth-child(4){{animation-delay:0.20s;}}
@@ -208,7 +200,6 @@ body {{
 </head>
 <body>
 <div class="page">
-
   <div class="header">
     <div>
       <div class="header-title">Permit Requests Dashboard</div>
@@ -222,11 +213,8 @@ body {{
       <span class="time-badge">{now}</span>
     </div>
   </div>
-
   <div class="kpi-grid">{kpi_cards_html}</div>
-
   <div class="divider"></div>
-
   <div class="charts-row">
     <div class="chart-card">
       <div class="chart-header"><span class="chart-title">Status Breakdown</span></div>
@@ -243,7 +231,6 @@ body {{
       <div class="chart-wrap"><canvas id="bar"></canvas></div>
     </div>
   </div>
-
 </div>
 <script>
 const labels  = {json.dumps(display_labels)};
