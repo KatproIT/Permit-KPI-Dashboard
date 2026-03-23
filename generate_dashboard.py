@@ -1,0 +1,345 @@
+import requests
+import json
+import os
+from collections import Counter
+from datetime import datetime
+
+# ─── CONFIG ───────────────────────────────────────────────────────────────────
+TENANT_ID       = os.environ.get("TENANT_ID")
+CLIENT_ID       = os.environ.get("CLIENT_ID")
+CLIENT_SECRET   = os.environ.get("CLIENT_SECRET")
+SHAREPOINT_HOST = "ontivity.sharepoint.com"
+SITE_PATH       = "/sites/Permittingsolution"
+LIST_NAME       = "Permit Requests"
+# ──────────────────────────────────────────────────────────────────────────────
+
+def get_access_token():
+    url = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token"
+    data = {
+        "grant_type":    "client_credentials",
+        "client_id":     CLIENT_ID,
+        "client_secret": CLIENT_SECRET,
+        "scope":         "https://graph.microsoft.com/.default",
+    }
+    res = requests.post(url, data=data)
+    res.raise_for_status()
+    token = res.json().get("access_token")
+    print("✅ Access token retrieved")
+    return token
+
+def get_site_id(token):
+    headers = {"Authorization": f"Bearer {token}"}
+    url = f"https://graph.microsoft.com/v1.0/sites/{SHAREPOINT_HOST}:{SITE_PATH}"
+    res = requests.get(url, headers=headers)
+    res.raise_for_status()
+    site_id = res.json()["id"]
+    print(f"✅ Site ID: {site_id}")
+    return site_id
+
+def get_list_id(token, site_id):
+    headers = {"Authorization": f"Bearer {token}"}
+    url = f"https://graph.microsoft.com/v1.0/sites/{site_id}/lists"
+    res = requests.get(url, headers=headers)
+    res.raise_for_status()
+    lists = res.json().get("value", [])
+    for l in lists:
+        if l["name"].lower() == LIST_NAME.lower() or l["displayName"].lower() == LIST_NAME.lower():
+            print(f"✅ List ID: {l['id']}")
+            return l["id"]
+    raise Exception(f"List '{LIST_NAME}' not found.")
+
+def fetch_list_items(token, site_id, list_id):
+    headers = {"Authorization": f"Bearer {token}"}
+    items = []
+    url = (
+        f"https://graph.microsoft.com/v1.0/sites/{site_id}/lists/{list_id}"
+        f"/items?expand=fields(select=Status)&$top=5000"
+    )
+    while url:
+        res = requests.get(url, headers=headers)
+        res.raise_for_status()
+        data = res.json()
+        items += data.get("value", [])
+        url = data.get("@odata.nextLink")
+    print(f"✅ Fetched {len(items)} items")
+    return items
+
+def build_dashboard(items):
+    counts = Counter(
+        (item.get("fields", {}).get("Status") or "Unknown").strip()
+        for item in items
+    )
+
+    STATUS_META = {
+        "approved":          {"color": "#22c55e", "glow": "rgba(34,197,94,0.25)",   "icon": "✓", "label": "Approved"},
+        "rejected":          {"color": "#ef4444", "glow": "rgba(239,68,68,0.25)",   "icon": "✕", "label": "Rejected"},
+        "resubmitted":       {"color": "#f97316", "glow": "rgba(249,115,22,0.25)",  "icon": "↺", "label": "Resubmitted"},
+        "submitted":         {"color": "#38bdf8", "glow": "rgba(56,189,248,0.25)",  "icon": "→", "label": "Submitted"},
+        "approval awaiting": {"color": "#a78bfa", "glow": "rgba(167,139,250,0.25)", "icon": "⏳", "label": "Awaiting Approval"},
+        "awaiting approval": {"color": "#a78bfa", "glow": "rgba(167,139,250,0.25)", "icon": "⏳", "label": "Awaiting Approval"},
+        "awaiting":          {"color": "#a78bfa", "glow": "rgba(167,139,250,0.25)", "icon": "⏳", "label": "Awaiting"},
+    }
+
+    def get_meta(label):
+        return STATUS_META.get(label.lower(), {
+            "color": "#64748b", "glow": "rgba(100,116,139,0.2)", "icon": "•", "label": label
+        })
+
+    total          = sum(counts.values())
+    labels         = list(counts.keys())
+    values         = list(counts.values())
+    colors         = [get_meta(l)["color"] for l in labels]
+    display_labels = [get_meta(l)["label"] for l in labels]
+    now            = datetime.utcnow().strftime("%b %d, %Y · %I:%M %p UTC")
+
+    # ── KPI Cards HTML ──
+    kpi_cards_html = f"""
+      <div class="kpi-card total">
+        <div class="kpi-top">
+          <span class="kpi-icon">📋</span>
+          <span class="kpi-tag">ALL</span>
+        </div>
+        <div class="kpi-num">{total}</div>
+        <div class="kpi-lbl">Total Permits</div>
+        <div class="kpi-progress">
+          <div class="kpi-fill" style="width:100%;background:linear-gradient(90deg,#6366f1,#818cf8);"></div>
+        </div>
+      </div>"""
+
+    for label, value in counts.items():
+        meta = get_meta(label)
+        pct  = round(value / total * 100)
+        kpi_cards_html += f"""
+      <div class="kpi-card" style="--glow:{meta['glow']};--accent:{meta['color']};">
+        <div class="kpi-top">
+          <span class="kpi-icon">{meta['icon']}</span>
+          <span class="kpi-tag" style="color:{meta['color']};border-color:{meta['color']}33;">{pct}%</span>
+        </div>
+        <div class="kpi-num" style="color:{meta['color']};">{value}</div>
+        <div class="kpi-lbl">{meta['label']}</div>
+        <div class="kpi-progress">
+          <div class="kpi-fill" style="width:{pct}%;background:{meta['color']};box-shadow:0 0 8px {meta['color']}88;"></div>
+        </div>
+      </div>"""
+
+    # ── Full HTML ──
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Permit Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+*, *::before, *::after {{ box-sizing:border-box; margin:0; padding:0; }}
+:root {{
+  --bg:#080b14; --card:#111827;
+  --border:rgba(255,255,255,0.06); --border2:rgba(255,255,255,0.10);
+  --text:#f1f5f9; --muted:#64748b;
+}}
+body {{
+  font-family:'Plus Jakarta Sans',sans-serif;
+  background:var(--bg); color:var(--text); min-height:100vh;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -20%,rgba(99,102,241,0.12),transparent),
+    radial-gradient(ellipse 60% 40% at 80% 80%,rgba(34,197,94,0.05),transparent);
+}}
+.page {{ max-width:1200px; margin:0 auto; padding:36px 28px; }}
+
+/* Header */
+.header {{ display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:36px; padding-bottom:24px; border-bottom:1px solid var(--border); }}
+.header-title {{ font-size:1.75rem; font-weight:800; letter-spacing:-0.8px; background:linear-gradient(135deg,#f1f5f9 30%,#94a3b8); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }}
+.header-sub {{ display:flex; align-items:center; gap:8px; margin-top:6px; }}
+.header-sub span {{ font-size:0.78rem; color:var(--muted); font-family:'JetBrains Mono',monospace; }}
+.dot {{ width:6px; height:6px; border-radius:50%; background:#22c55e; display:inline-block; box-shadow:0 0 6px #22c55e; animation:pulse 2s infinite; }}
+@keyframes pulse {{ 0%,100%{{opacity:1}} 50%{{opacity:0.4}} }}
+.header-right {{ display:flex; flex-direction:column; align-items:flex-end; gap:8px; }}
+.live-badge {{ background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.25); border-radius:999px; padding:5px 12px; font-size:0.72rem; color:#4ade80; font-family:'JetBrains Mono',monospace; }}
+.time-badge {{ font-size:0.72rem; color:var(--muted); font-family:'JetBrains Mono',monospace; }}
+
+/* KPI Grid */
+.kpi-grid {{ display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:14px; margin-bottom:24px; }}
+.kpi-card {{
+  background:var(--card); border:1px solid var(--border); border-radius:18px;
+  padding:22px 20px 18px; position:relative; overflow:hidden;
+  transition:transform 0.25s cubic-bezier(.34,1.56,.64,1),box-shadow 0.25s;
+  animation:slideUp 0.5s ease both;
+}}
+.kpi-card::before {{
+  content:''; position:absolute; inset:0; border-radius:18px;
+  background:radial-gradient(ellipse at top left,var(--glow,transparent),transparent 70%);
+  pointer-events:none;
+}}
+.kpi-card:hover {{ transform:translateY(-4px) scale(1.01); box-shadow:0 16px 40px rgba(0,0,0,0.4); }}
+.kpi-card.total {{ background:linear-gradient(135deg,#13162b,#0e1120); border-color:rgba(99,102,241,0.2); }}
+.kpi-card.total .kpi-num {{ color:#818cf8; }}
+.kpi-top {{ display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }}
+.kpi-icon {{ font-size:1.25rem; }}
+.kpi-tag {{ font-size:0.68rem; font-weight:700; font-family:'JetBrains Mono',monospace; border:1px solid rgba(99,102,241,0.3); color:#818cf8; padding:2px 8px; border-radius:999px; }}
+.kpi-num {{ font-size:3rem; font-weight:800; letter-spacing:-2px; line-height:1; margin-bottom:6px; }}
+.kpi-lbl {{ font-size:0.72rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.8px; font-weight:600; margin-bottom:14px; }}
+.kpi-progress {{ height:3px; background:rgba(255,255,255,0.06); border-radius:99px; overflow:hidden; }}
+.kpi-fill {{ height:100%; border-radius:99px; }}
+
+/* Divider */
+.divider {{ height:1px; background:linear-gradient(90deg,transparent,var(--border2),transparent); margin:24px 0; }}
+
+/* Charts */
+.charts-row {{ display:grid; grid-template-columns:420px 1fr; gap:20px; }}
+@media(max-width:800px){{ .charts-row{{grid-template-columns:1fr;}} }}
+.chart-card {{
+  background:var(--card); border:1px solid var(--border); border-radius:18px;
+  padding:26px 24px; animation:slideUp 0.5s ease both; animation-delay:0.3s;
+}}
+.chart-header {{ display:flex; align-items:center; justify-content:space-between; margin-bottom:22px; }}
+.chart-title {{ font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:1.2px; color:var(--muted); }}
+.chart-wrap {{ position:relative; height:280px; display:flex; align-items:center; justify-content:center; }}
+.donut-center {{ position:absolute; text-align:center; pointer-events:none; }}
+.donut-center-num {{ font-size:2.2rem; font-weight:800; letter-spacing:-1px; color:var(--text); }}
+.donut-center-lbl {{ font-size:0.68rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.8px; margin-top:2px; }}
+
+/* Animations */
+@keyframes slideUp {{ from{{opacity:0;transform:translateY(20px);}} to{{opacity:1;transform:translateY(0);}} }}
+.kpi-card:nth-child(1){{animation-delay:0.05s;}} .kpi-card:nth-child(2){{animation-delay:0.10s;}}
+.kpi-card:nth-child(3){{animation-delay:0.15s;}} .kpi-card:nth-child(4){{animation-delay:0.20s;}}
+.kpi-card:nth-child(5){{animation-delay:0.25s;}} .chart-card:nth-child(2){{animation-delay:0.38s;}}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="header">
+    <div>
+      <div class="header-title">Permit Requests Dashboard</div>
+      <div class="header-sub">
+        <span class="dot"></span>
+        <span>Permittingsolution · Live SharePoint Data</span>
+      </div>
+    </div>
+    <div class="header-right">
+      <span class="live-badge">● LIVE</span>
+      <span class="time-badge">{now}</span>
+    </div>
+  </div>
+
+  <div class="kpi-grid">{kpi_cards_html}</div>
+
+  <div class="divider"></div>
+
+  <div class="charts-row">
+    <div class="chart-card">
+      <div class="chart-header"><span class="chart-title">Status Breakdown</span></div>
+      <div class="chart-wrap">
+        <canvas id="donut"></canvas>
+        <div class="donut-center">
+          <div class="donut-center-num">{total}</div>
+          <div class="donut-center-lbl">Permits</div>
+        </div>
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-header"><span class="chart-title">Count by Status</span></div>
+      <div class="chart-wrap"><canvas id="bar"></canvas></div>
+    </div>
+  </div>
+
+</div>
+<script>
+const labels  = {json.dumps(display_labels)};
+const values  = {json.dumps(values)};
+const colors  = {json.dumps(colors)};
+const total   = {total};
+
+Chart.defaults.color = '#64748b';
+Chart.defaults.font.family = 'Plus Jakarta Sans';
+
+new Chart(document.getElementById('donut'), {{
+  type: 'doughnut',
+  data: {{
+    labels,
+    datasets: [{{
+      data: values,
+      backgroundColor: colors.map(c => c + 'dd'),
+      borderColor: '#111827',
+      borderWidth: 4,
+      hoverOffset: 10
+    }}]
+  }},
+  options: {{
+    responsive: true,
+    maintainAspectRatio: false,
+    cutout: '70%',
+    plugins: {{
+      legend: {{
+        position: 'bottom',
+        labels: {{ padding:18, usePointStyle:true, pointStyleWidth:8, font:{{size:11,weight:'600'}}, color:'#94a3b8' }}
+      }},
+      tooltip: {{
+        backgroundColor: '#1e293b',
+        borderColor: 'rgba(255,255,255,0.08)',
+        borderWidth: 1,
+        padding: 12,
+        callbacks: {{ label: c => `  ${{c.label}}: ${{c.raw}} permits (${{Math.round(c.raw/total*100)}}%)` }}
+      }}
+    }}
+  }}
+}});
+
+new Chart(document.getElementById('bar'), {{
+  type: 'bar',
+  data: {{
+    labels,
+    datasets: [{{
+      data: values,
+      backgroundColor: colors.map(c => c + '33'),
+      borderColor: colors,
+      borderWidth: 2,
+      borderRadius: 10,
+      borderSkipped: false,
+      hoverBackgroundColor: colors.map(c => c + '66'),
+    }}]
+  }},
+  options: {{
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {{
+      legend: {{ display: false }},
+      tooltip: {{
+        backgroundColor: '#1e293b',
+        borderColor: 'rgba(255,255,255,0.08)',
+        borderWidth: 1,
+        padding: 12,
+        callbacks: {{ label: c => `  ${{c.raw}} permits` }}
+      }}
+    }},
+    scales: {{
+      x: {{ grid:{{color:'rgba(255,255,255,0.04)'}}, ticks:{{font:{{size:11,weight:'600'}},color:'#64748b'}} }},
+      y: {{ grid:{{color:'rgba(255,255,255,0.04)'}}, ticks:{{stepSize:1,color:'#64748b'}}, beginAtZero:true }}
+    }}
+  }}
+}});
+</script>
+</body>
+</html>"""
+
+    with open("index.html", "w", encoding="utf-8") as f:
+        f.write(html)
+    print(f"✅ index.html saved — {now}")
+
+
+def main():
+    print("🔐 Getting access token...")
+    token = get_access_token()
+    print("🔍 Getting site ID...")
+    site_id = get_site_id(token)
+    print("📋 Getting list ID...")
+    list_id = get_list_id(token, site_id)
+    print("📦 Fetching list items...")
+    items = fetch_list_items(token, site_id, list_id)
+    print("📊 Building dashboard...")
+    build_dashboard(items)
+
+
+if __name__ == "__main__":
+    main()
