@@ -83,7 +83,7 @@ body {
     </div>
     <div class="header-right">
       <span class="live-badge">● LIVE</span>
-      <span class="time-badge">Last Updated at May 29, 2026 · 04:20 AM EST</span>
+      <span class="time-badge">Last Updated at May 29, 2026 · 06:12 AM EST</span>
     </div>
   </div>
   <div class="kpi-grid">
@@ -92,7 +92,7 @@ body {
           <span class="kpi-icon">📋</span>
           <span class="kpi-tag">ALL</span>
         </div>
-        <div class="kpi-num">36</div>
+        <div class="kpi-num">37</div>
         <div class="kpi-lbl">Total Permits</div>
         <div class="kpi-progress">
           <div class="kpi-fill" style="width:100%;background:linear-gradient(90deg,#6366f1,#818cf8);"></div>
@@ -101,23 +101,23 @@ body {
       <div class="kpi-card" style="--glow:rgba(167,139,250,0.25);--accent:#a78bfa;">
         <div class="kpi-top">
           <span class="kpi-icon">⏳</span>
-          <span class="kpi-tag" style="color:#a78bfa;border-color:#a78bfa33;">50%</span>
+          <span class="kpi-tag" style="color:#a78bfa;border-color:#a78bfa33;">49%</span>
         </div>
         <div class="kpi-num" style="color:#a78bfa;">18</div>
         <div class="kpi-lbl">Awaiting Approval</div>
         <div class="kpi-progress">
-          <div class="kpi-fill" style="width:50%;background:#a78bfa;box-shadow:0 0 8px #a78bfa88;"></div>
+          <div class="kpi-fill" style="width:49%;background:#a78bfa;box-shadow:0 0 8px #a78bfa88;"></div>
         </div>
       </div>
       <div class="kpi-card" style="--glow:rgba(100,116,139,0.2);--accent:#64748b;">
         <div class="kpi-top">
           <span class="kpi-icon">•</span>
-          <span class="kpi-tag" style="color:#64748b;border-color:#64748b33;">33%</span>
+          <span class="kpi-tag" style="color:#64748b;border-color:#64748b33;">32%</span>
         </div>
         <div class="kpi-num" style="color:#64748b;">12</div>
         <div class="kpi-lbl">Qp Approved</div>
         <div class="kpi-progress">
-          <div class="kpi-fill" style="width:33%;background:#64748b;box-shadow:0 0 8px #64748b88;"></div>
+          <div class="kpi-fill" style="width:32%;background:#64748b;box-shadow:0 0 8px #64748b88;"></div>
         </div>
       </div>
       <div class="kpi-card" style="--glow:rgba(249,115,22,0.25);--accent:#f97316;">
@@ -141,6 +141,17 @@ body {
         <div class="kpi-progress">
           <div class="kpi-fill" style="width:3%;background:#64748b;box-shadow:0 0 8px #64748b88;"></div>
         </div>
+      </div>
+      <div class="kpi-card" style="--glow:rgba(100,116,139,0.2);--accent:#64748b;">
+        <div class="kpi-top">
+          <span class="kpi-icon">•</span>
+          <span class="kpi-tag" style="color:#64748b;border-color:#64748b33;">3%</span>
+        </div>
+        <div class="kpi-num" style="color:#64748b;">1</div>
+        <div class="kpi-lbl">Approver Rejected</div>
+        <div class="kpi-progress">
+          <div class="kpi-fill" style="width:3%;background:#64748b;box-shadow:0 0 8px #64748b88;"></div>
+        </div>
       </div></div>
   <div class="divider"></div>
   <div class="charts-row">
@@ -149,7 +160,7 @@ body {
       <div class="chart-wrap">
         <canvas id="donut"></canvas>
         <div class="donut-center">
-          <div class="donut-center-num">36</div>
+          <div class="donut-center-num">37</div>
           <div class="donut-center-lbl">Permits</div>
         </div>
       </div>
@@ -161,10 +172,10 @@ body {
   </div>
 </div>
 <script>
-const labels  = ["Awaiting Approval", "Qp Approved", "Resubmitted", "Qp Rejected"];
-const values  = [18, 12, 5, 1];
-const colors  = ["#a78bfa", "#64748b", "#f97316", "#64748b"];
-const total   = 36;
+const labels  = ["Awaiting Approval", "Qp Approved", "Resubmitted", "Qp Rejected", "Approver Rejected"];
+const values  = [18, 12, 5, 1, 1];
+const colors  = ["#a78bfa", "#64748b", "#f97316", "#64748b", "#64748b"];
+const total   = 37;
 
 Chart.defaults.color = '#64748b';
 Chart.defaults.font.family = 'Plus Jakarta Sans';
